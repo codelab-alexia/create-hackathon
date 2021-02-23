@@ -8,8 +8,6 @@ export const app: Koa = new Koa();
 
 const router: Router = new Router();
 
-let nHackathons = 0;
-
 interface ValidationResult {
   isValid: boolean;
   reason?: string;
@@ -26,18 +24,22 @@ const validateNewHackathon = async (hackathon: any, db: any): Promise<Validation
     };
   }
 
-  const existingHackathons = await db.collection('hackathons').find({ name }).toArray();
+  const hackEvents = await db.collection('hackathons').find({}).toArray();
 
-  if (existingHackathons.length) {
+  const nameIsUsed = hackEvents
+    .map(({ payload }: any): string => payload.name)
+    .some((n: string): boolean => n === name);
+
+  if (nameIsUsed) {
     return {
       isValid: false,
-      reason: 'name already in use',
+      reason: 'name already taken',
     };
   }
 
   return {
     isValid: true,
-    payload: { name, id: ++nHackathons },
+    payload: { name, id: ++hackEvents.length },
   };
 };
 
@@ -57,12 +59,24 @@ const createNewHackathon = async (ctx: Koa.Context): Promise<void> => {
     payload,
   };
 
-  broker.publish(newHackathonEvent.type, JSON.stringify(newHackathonEvent.payload));
+  broker.publish('hackathons', JSON.stringify(newHackathonEvent));
 
   ctx.body = { hackathon: payload };
 };
 
 router.post('/hackathons', createNewHackathon);
+
+const readAllHackathons = async (ctx: Koa.Context): Promise<void> => {
+  const { db } = ctx;
+
+  const hackEvents = await db.collection('hackathons').find({}).toArray();
+
+  const hackathons = hackEvents.map(({ payload }: any): any => payload);
+
+  ctx.body = { hackathons };
+};
+
+router.get('/hackathons', readAllHackathons);
 
 app.use(bodyparser());
 app.use(json());
